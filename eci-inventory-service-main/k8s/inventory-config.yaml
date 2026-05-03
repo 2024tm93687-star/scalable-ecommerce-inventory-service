@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+data:
+  SERVICE_NAME: inventory-service
+  PORT: "3002"
+  LOW_STOCK_THRESHOLD: "5"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: inventory-secret
+type: Opaque
+stringData:
+  db_password: postgres
+  database_url: postgres://postgres:postgres@inventory-db:5432/inventory_db

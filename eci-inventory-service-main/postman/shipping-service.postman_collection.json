@@ -1,0 +1,167 @@
+{
+  "info": {
+    "_postman_id": "9c11b5f8-f41a-4e13-84e7-0dfa8af93102",
+    "name": "ECI - Shipping Service APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health - Shipping",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Health payload has service', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property('service');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "x-correlation-id", "value": "{{$guid}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrlShipping}}/health",
+          "host": ["{{baseUrlShipping}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Create Shipment (Idempotent)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('idempotencyKey', `ship-${Date.now()}-${Math.floor(Math.random()*10000)}`);",
+              "pm.environment.set('correlationId', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 201 or 200', function () {",
+              "  pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "pm.test('Shipment response contains shipment_id', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property('shipment_id');",
+              "  pm.environment.set('shipmentId', json.shipment_id);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" },
+          { "key": "x-correlation-id", "value": "{{correlationId}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{orderId}}\",\n  \"carrier\": \"BlueDart\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrlShipping}}/v1/shipments",
+          "host": ["{{baseUrlShipping}}"],
+          "path": ["v1", "shipments"]
+        }
+      }
+    },
+    {
+      "name": "Update Shipment Status",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200 or 404', function () {",
+              "  pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "pm.test('Error format on 404 is standard', function () {",
+              "  if (pm.response.code === 404) {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.have.property('code');",
+              "    pm.expect(json).to.have.property('message');",
+              "    pm.expect(json).to.have.property('correlationId');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "x-correlation-id", "value": "{{$guid}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"SHIPPED\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrlShipping}}/v1/shipments/{{shipmentId}}/status",
+          "host": ["{{baseUrlShipping}}"],
+          "path": ["v1", "shipments", "{{shipmentId}}", "status"]
+        }
+      }
+    },
+    {
+      "name": "List Shipments",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Pagination response shape is valid', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.items).to.be.an('array');",
+              "  pm.expect(json).to.have.property('page');",
+              "  pm.expect(json).to.have.property('limit');",
+              "  pm.expect(json).to.have.property('total');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "x-correlation-id", "value": "{{$guid}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrlShipping}}/v1/shipments?page=1&limit=10&order_id={{orderId}}",
+          "host": ["{{baseUrlShipping}}"],
+          "path": ["v1", "shipments"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" },
+            { "key": "order_id", "value": "{{orderId}}" }
+          ]
+        }
+      }
+    }
+  ]
+}

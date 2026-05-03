@@ -1,0 +1,301 @@
+openapi: 3.0.3
+info:
+  title: ECI Inventory Service API
+  version: 1.0.0
+  description: Stock management, reservation, release, shipment movements, and low-stock monitoring.
+servers:
+  - url: http://localhost:3002
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+
+  /v1/inventory:
+    get:
+      summary: List inventory balances
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - in: query
+          name: product_id
+          schema:
+            type: string
+        - in: query
+          name: sku
+          schema:
+            type: string
+        - in: query
+          name: warehouse
+          schema:
+            type: string
+        - in: query
+          name: below_threshold
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Paginated inventory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInventory'
+
+  /v1/inventory/reserve:
+    post:
+      summary: Reserve inventory for an order (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReserveRequest'
+      responses:
+        '200':
+          description: Reservation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReserveResponse'
+        '400':
+          $ref: '#/components/responses/StandardError'
+
+  /v1/inventory/release:
+    post:
+      summary: Release reserved inventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id]
+              properties:
+                order_id:
+                  type: string
+                reason:
+                  type: string
+                  example: PAYMENT_FAILED
+      responses:
+        '200':
+          description: Release done
+        '404':
+          $ref: '#/components/responses/StandardError'
+
+  /v1/inventory/ship:
+    post:
+      summary: Convert reserved stock to shipped movements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, shipment_id]
+              properties:
+                order_id:
+                  type: string
+                shipment_id:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: string
+                      warehouse:
+                        type: string
+                      quantity:
+                        type: integer
+      responses:
+        '200':
+          description: Shipment movement recorded
+        '400':
+          $ref: '#/components/responses/StandardError'
+
+  /v1/inventory/movements:
+    get:
+      summary: List inventory movement audit
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - in: query
+          name: order_id
+          schema:
+            type: string
+        - in: query
+          name: product_id
+          schema:
+            type: string
+        - in: query
+          name: warehouse
+          schema:
+            type: string
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [RESERVE, RELEASE, SHIP]
+      responses:
+        '200':
+          description: Paginated movement logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMovements'
+
+components:
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      in: query
+      name: limit
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    IdempotencyKeyHeader:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+  responses:
+    StandardError:
+      description: Standard error format
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [code, message, correlationId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        correlationId:
+          type: string
+    InventoryRecord:
+      type: object
+      properties:
+        inventory_id:
+          type: string
+        product_id:
+          type: string
+        warehouse:
+          type: string
+        on_hand:
+          type: integer
+        reserved:
+          type: integer
+        available:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+    ReserveRequest:
+      type: object
+      required: [order_id, reservation_ttl_seconds, items]
+      properties:
+        order_id:
+          type: string
+        reservation_ttl_seconds:
+          type: integer
+          default: 900
+        items:
+          type: array
+          items:
+            type: object
+            required: [sku, quantity]
+            properties:
+              sku:
+                type: string
+              quantity:
+                type: integer
+                minimum: 1
+    ReserveResponse:
+      type: object
+      properties:
+        order_id:
+          type: string
+        reservation_id:
+          type: string
+        status:
+          type: string
+          enum: [FULLY_RESERVED, PARTIALLY_RESERVED, REJECTED]
+        expires_at:
+          type: string
+          format: date-time
+        allocations:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+              product_id:
+                type: string
+              warehouse:
+                type: string
+              quantity:
+                type: integer
+    Movement:
+      type: object
+      properties:
+        movement_id:
+          type: string
+        product_id:
+          type: string
+        warehouse:
+          type: string
+        order_id:
+          type: string
+        type:
+          type: string
+          enum: [RESERVE, RELEASE, SHIP]
+        quantity:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    PaginatedInventory:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryRecord'
+    PaginatedMovements:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Movement'
